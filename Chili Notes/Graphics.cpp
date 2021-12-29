@@ -45,7 +45,7 @@ public:
 		pDevice->CreateRenderTargetView(pBackBuffer, nullptr, &pTarget);//利用后缓存创建渲染目标视图后，不再需要
 		pBackBuffer->Release();
 	}
-	void DrawTriangle() {
+	void DrawTriangle(float angle) {
 #pragma region IA(Vertex and Index buffer)
 		struct Vertex {
 			float x;
@@ -111,6 +111,34 @@ public:
 		//bind index buffer
 		pContext->IASetIndexBuffer(pIndexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0u);
 #pragma endregion
+#pragma region shader buffer
+		//create constant buffer for transformation matrix
+		struct ConstantBuffer {
+			struct {
+				float element[4][4];
+			} transformation;
+		};
+		const ConstantBuffer cb = {
+			{3.0f/4.0f * std::cos(angle), std::sin(angle), 0.0f, 0.0f,//MARK:这是设置归一化正方体坐标，为了匹配设置的视口大小不进行拉伸需要*高宽比
+			3.0f/4.0f * std::cos(angle), std::sin(angle), 0.0f, 0.0f,
+			0,0,0,0,
+			0,0,0,0,
+			}
+		};
+		wrl::ComPtr<ID3D11Buffer> pConstantBuffer;
+		D3D11_BUFFER_DESC cbd;
+		cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;//constant buffer
+		cbd.Usage = D3D11_USAGE_DYNAMIC;//MARK: 常常使用动态，因为需要每帧更新 
+		cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;//对于动态constant buffer需要CPU能够访问
+		cbd.MiscFlags = 0u;
+		cbd.ByteWidth = sizeof(cb);//TODO: 缓冲区大小
+		cbd.StructureByteStride = 0u;
+		D3D11_SUBRESOURCE_DATA csd = {};
+		csd.pSysMem = &cb;
+		pDevice->CreateBuffer(&cbd, &csd, pConstantBuffer.GetAddressOf());
+		//bind to pipeline
+		pContext->VSSetConstantBuffers(0u, 1u, pConstantBuffer.GetAddressOf());//不需要输入布局
+#pragma endregion
 #pragma endregion
 
 		wrl::ComPtr<ID3DBlob> pBlob;					//blob是二进制, 用来临时存放.cso
@@ -144,7 +172,7 @@ public:
 			pBlob->GetBufferPointer(),
 			pBlob->GetBufferSize(),
 			&pInputLayout);
-		pContext->IASetInputLayout(pInputLayout.Get()); 
+		pContext->IASetInputLayout(pInputLayout.Get());
 #pragma endregion
 		//bind render target
 		pContext->OMSetRenderTargets(1u, pTarget.GetAddressOf(), nullptr);//需要设置输出合并阶段的输出目标，否则pixelshader不知道输出到哪里
